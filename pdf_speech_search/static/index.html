@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>PDF Speech Search</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>PDF Speech Search</h1>
+          <p id="statusLine">Index loading</p>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <aside class="leftPane">
+          <div class="captionPanel">
+            <div class="panelHead">
+              <h2>Captions</h2>
+              <label class="toggle">
+                <input id="autoSearch" type="checkbox" checked />
+                <span>Auto</span>
+              </label>
+            </div>
+            <textarea id="transcript" spellcheck="false" placeholder="Live transcript"></textarea>
+            <div id="captureBar" class="captureBar">
+              <button id="micBtn" class="iconButton micButton" type="button" aria-label="Start recording">
+                <svg class="micGlyph" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 3a3 3 0 0 0-3 3v5a3 3 0 0 0 6 0V6a3 3 0 0 0-3-3Z"></path>
+                  <path d="M5 10v1a7 7 0 0 0 14 0v-1"></path>
+                  <path d="M12 18v3"></path>
+                  <path d="M8 21h8"></path>
+                </svg>
+                <span class="stopGlyph"></span>
+              </button>
+              <div id="recorderMeter" class="recorderMeter" aria-hidden="true">
+                <div id="waveform" class="waveform"></div>
+                <span id="recordTimer" class="recordTimer">0:00</span>
+              </div>
+              <div class="captureSpacer"></div>
+              <button id="clearBtn" class="iconButton clearButton" type="button" aria-label="Clear transcript">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 21h14"></path>
+                  <path d="M7 21v-4"></path>
+                  <path d="M17 21v-4"></path>
+                  <path d="M6 17h12l-1-8H7l-1 8Z"></path>
+                  <path d="M9 9V5a3 3 0 0 1 6 0v4"></path>
+                  <path d="M10 13h4"></path>
+                </svg>
+              </button>
+              <button id="searchBtn" class="iconButton searchButton" type="button" aria-label="Search">
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 19V5"></path>
+                  <path d="M5 12l7-7 7 7"></path>
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="resultsPanel">
+            <div class="panelHead">
+              <h2>Matches</h2>
+              <span id="resultCount">0</span>
+            </div>
+            <div id="results" class="results"></div>
+          </div>
+        </aside>
+
+        <section class="viewerPane">
+          <div class="viewerHead">
+            <div>
+              <h2 id="viewerTitle">PDF</h2>
+              <p id="viewerPage">No page selected</p>
+            </div>
+            <a id="openTab" class="openLink" href="#" target="_blank" rel="noreferrer">Open</a>
+          </div>
+          <iframe id="pdfViewer" title="PDF viewer"></iframe>
+        </section>
+      </section>
+    </main>
+    <script src="/static/app.js" type="module"></script>
+  </body>
+</html>
