@@ -8,13 +8,14 @@ from typing import Any
 import numpy as np
 from fastapi import WebSocket
 
+from pdf_speech_search.asr_models import AsrModelSpec
 from pdf_speech_search.settings import settings
 
 
 SAMPLE_RATE = 16000
 BYTES_PER_SAMPLE = 2
 
-_model: Any | None = None
+_models: dict[tuple[str, str, str], Any] = {}
 _model_lock = threading.Lock()
 
 
@@ -50,18 +51,32 @@ def status() -> WhisperStatus:
 
 
 def get_model() -> Any:
-    global _model
-    if _model is None:
+    spec = AsrModelSpec(
+        id="legacy-whisper",
+        label="Whisper",
+        detail="",
+        engine="whisper",
+        model_name=settings.whisper_model,
+        repo_id="",
+        chunk_seconds=settings.whisper_chunk_seconds,
+        beam_size=settings.whisper_beam_size,
+    )
+    return get_model_for_spec(spec)
+
+
+def get_model_for_spec(spec: AsrModelSpec) -> Any:
+    key = (spec.model_name, settings.whisper_device, settings.whisper_compute_type)
+    if key not in _models:
         with _model_lock:
-            if _model is None:
+            if key not in _models:
                 from faster_whisper import WhisperModel
 
-                _model = WhisperModel(
-                    settings.whisper_model,
+                _models[key] = WhisperModel(
+                    spec.model_name,
                     device=settings.whisper_device,
                     compute_type=settings.whisper_compute_type,
                 )
-    return _model
+    return _models[key]
 
 
 def pcm16_to_float32(raw_audio: bytes) -> np.ndarray:
@@ -69,17 +84,17 @@ def pcm16_to_float32(raw_audio: bytes) -> np.ndarray:
     return pcm.astype(np.float32) / 32768.0
 
 
-def transcribe_chunk(raw_audio: bytes, prompt: str) -> str:
+def transcribe_chunk(raw_audio: bytes, prompt: str, spec: AsrModelSpec) -> str:
     audio = pcm16_to_float32(raw_audio)
     if audio.size < SAMPLE_RATE * 0.5:
         return ""
 
-    model = get_model()
+    model = get_model_for_spec(spec)
     segments, _info = model.transcribe(
         audio,
         language=settings.whisper_language,
         task="transcribe",
-        beam_size=settings.whisper_beam_size,
+        beam_size=spec.beam_size,
         temperature=0.0,
         vad_filter=True,
         condition_on_previous_text=True,
@@ -89,7 +104,18 @@ def transcribe_chunk(raw_audio: bytes, prompt: str) -> str:
     return " ".join(text.split())
 
 
-async def stream_websocket(websocket: WebSocket) -> None:
+async def stream_websocket(websocket: WebSocket, spec: AsrModelSpec | None = None) -> None:
+    if spec is None:
+        spec = AsrModelSpec(
+            id="legacy-whisper",
+            label="Whisper",
+            detail="",
+            engine="whisper",
+            model_name=settings.whisper_model,
+            repo_id="",
+            chunk_seconds=settings.whisper_chunk_seconds,
+            beam_size=settings.whisper_beam_size,
+        )
     cfg = status()
     if not cfg.configured:
         await websocket.send_json({"type": "error", "message": cfg.reason})
@@ -98,11 +124,11 @@ async def stream_websocket(websocket: WebSocket) -> None:
     await websocket.send_json(
         {
             "type": "loading",
-            "message": f"Loading local Whisper model {settings.whisper_model}",
+            "message": f"Loading {spec.label}",
         }
     )
     try:
-        await asyncio.to_thread(get_model)
+        await asyncio.to_thread(get_model_for_spec, spec)
     except Exception as exc:  # pragma: no cover - model download/runtime dependent
         await websocket.send_json({"type": "error", "message": f"Whisper model load failed: {exc}"})
         return
@@ -111,14 +137,14 @@ async def stream_websocket(websocket: WebSocket) -> None:
         {
             "type": "ready",
             "sample_rate": SAMPLE_RATE,
-            "model": settings.whisper_model,
-            "chunk_seconds": settings.whisper_chunk_seconds,
+            "model": spec.label,
+            "chunk_seconds": spec.chunk_seconds,
         }
     )
 
     audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=250)
     stop_event = asyncio.Event()
-    chunk_bytes = int(settings.whisper_chunk_seconds * SAMPLE_RATE * BYTES_PER_SAMPLE)
+    chunk_bytes = int(spec.chunk_seconds * SAMPLE_RATE * BYTES_PER_SAMPLE)
     min_flush_bytes = int(1.0 * SAMPLE_RATE * BYTES_PER_SAMPLE)
     transcript_tail = ""
 
@@ -154,7 +180,7 @@ async def stream_websocket(websocket: WebSocket) -> None:
             buffer.clear()
             prompt = (settings.whisper_initial_prompt + " " + transcript_tail[-500:]).strip()
             try:
-                text = await asyncio.to_thread(transcribe_chunk, raw, prompt)
+                text = await asyncio.to_thread(transcribe_chunk, raw, prompt, spec)
             except Exception as exc:  # pragma: no cover - model/runtime dependent
                 await websocket.send_json({"type": "error", "message": f"Whisper failed: {exc}"})
                 stop_event.set()

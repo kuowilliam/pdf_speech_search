@@ -1,4 +1,6 @@
 const state = {
+  asrModels: [],
+  selectedModelId: window.localStorage.getItem("pdfSpeechSearch.asrModelId") || "",
   audioContext: null,
   mediaStream: null,
   worklet: null,
@@ -8,6 +10,7 @@ const state = {
   finalizing: false,
   searchTimer: null,
   recorderTimer: null,
+  modelsPollTimer: null,
   recorderStartedAt: 0,
   waveformLevels: [],
   searchRequestId: 0,
@@ -19,6 +22,7 @@ const state = {
 const els = {
   statusLine: document.querySelector("#statusLine"),
   autoSearch: document.querySelector("#autoSearch"),
+  modelOptions: document.querySelector("#modelOptions"),
   transcript: document.querySelector("#transcript"),
   captureBar: document.querySelector("#captureBar"),
   micBtn: document.querySelector("#micBtn"),
@@ -37,7 +41,8 @@ const els = {
 
 function setControls(mode) {
   const recording = mode === "recording";
-  const disabled = mode === "connecting" || mode === "finalizing";
+  const modelUnavailable = mode === "idle" && !selectedModel()?.available;
+  const disabled = mode === "connecting" || mode === "finalizing" || modelUnavailable;
   els.micBtn.disabled = disabled;
   els.micBtn.classList.toggle("recording", recording);
   els.micBtn.setAttribute("aria-label", recording ? "Stop recording" : "Start recording");
@@ -45,6 +50,154 @@ function setControls(mode) {
 
 function setStatus(text) {
   els.statusLine.textContent = text;
+}
+
+function selectedModel() {
+  return state.asrModels.find((model) => model.id === state.selectedModelId) || null;
+}
+
+function modelStatusClass(model) {
+  if (model.download_status === "downloading") {
+    return "downloading";
+  }
+  if (model.download_status === "error") {
+    return "error";
+  }
+  if (model.available) {
+    return "ready";
+  }
+  if (model.installed && !model.runtime_available) {
+    return "error";
+  }
+  return "missing";
+}
+
+function downloadIcon() {
+  return `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3v12"></path>
+      <path d="M7 10l5 5 5-5"></path>
+      <path d="M5 21h14"></path>
+    </svg>
+  `;
+}
+
+function renderModelOptions() {
+  els.modelOptions.innerHTML = "";
+  for (const model of state.asrModels) {
+    const option = document.createElement("div");
+    option.role = "button";
+    option.tabIndex = state.recording || state.finalizing ? -1 : 0;
+    option.className = `modelOption ${state.selectedModelId === model.id ? "selected" : ""}`;
+    option.classList.toggle("disabled", state.recording || state.finalizing);
+    option.title = model.reason || model.model;
+
+    const dot = document.createElement("span");
+    dot.className = `modelDot ${modelStatusClass(model)}`;
+
+    const text = document.createElement("span");
+    text.className = "modelText";
+
+    const label = document.createElement("span");
+    label.className = "modelLabel";
+    label.textContent = model.label;
+
+    const detail = document.createElement("span");
+    detail.className = "modelDetail";
+    if (model.download_status === "downloading") {
+      detail.textContent = "Downloading";
+    } else if (model.download_status === "error") {
+      detail.textContent = "Error";
+    } else {
+      detail.textContent = model.detail;
+    }
+
+    text.append(label, detail);
+    option.append(dot, text);
+    const selectOption = () => {
+      if (state.recording || state.finalizing) {
+        return;
+      }
+      state.selectedModelId = model.id;
+      window.localStorage.setItem("pdfSpeechSearch.asrModelId", model.id);
+      renderModelOptions();
+      if (!model.available) {
+        setStatus(model.reason || `${model.label} needs download`);
+      } else if (!state.recording && !state.finalizing) {
+        setStatus(`${model.label} ready`);
+      }
+      setControls("idle");
+    };
+    option.addEventListener("click", selectOption);
+    option.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        selectOption();
+      }
+    });
+
+    if (!model.installed && model.download_status !== "downloading") {
+      const download = document.createElement("button");
+      download.type = "button";
+      download.className = "modelDownload";
+      download.setAttribute("aria-label", `Download ${model.label}`);
+      download.innerHTML = downloadIcon();
+      download.addEventListener("click", (event) => {
+        event.stopPropagation();
+        downloadAsrModel(model.id);
+      });
+      option.append(download);
+    }
+
+    els.modelOptions.appendChild(option);
+  }
+}
+
+function updateModelPolling() {
+  const downloading = state.asrModels.some((model) => model.download_status === "downloading");
+  if (downloading && !state.modelsPollTimer) {
+    state.modelsPollTimer = window.setInterval(() => loadAsrModels({ silent: true }), 1800);
+  } else if (!downloading && state.modelsPollTimer) {
+    window.clearInterval(state.modelsPollTimer);
+    state.modelsPollTimer = null;
+  }
+}
+
+async function loadAsrModels({ silent = false } = {}) {
+  const response = await fetch("/api/asr/models");
+  if (!response.ok) {
+    throw new Error("ASR model status failed");
+  }
+  const payload = await response.json();
+  state.asrModels = payload.models;
+  const selectedStillExists = state.asrModels.some((model) => model.id === state.selectedModelId);
+  if (!selectedStillExists) {
+    state.selectedModelId = payload.default_model_id;
+    window.localStorage.setItem("pdfSpeechSearch.asrModelId", state.selectedModelId);
+  }
+  renderModelOptions();
+  updateModelPolling();
+  if (!silent && selectedModel()?.available && !state.recording && !state.finalizing) {
+    setStatus(`${selectedModel().label} ready`);
+  }
+  setControls(state.recording ? "recording" : state.finalizing ? "finalizing" : "idle");
+  return payload;
+}
+
+async function downloadAsrModel(modelId) {
+  const model = state.asrModels.find((item) => item.id === modelId);
+  setStatus(`Downloading ${model?.label || "model"}`);
+  const response = await fetch(`/api/asr/models/${encodeURIComponent(modelId)}/download`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    setStatus("Download failed");
+    return;
+  }
+  const payload = await response.json();
+  state.asrModels = payload.models;
+  renderModelOptions();
+  updateModelPolling();
 }
 
 function initWaveform() {
@@ -270,13 +423,19 @@ async function runSearch() {
   }
 }
 
-async function startStreamingAsr(provider) {
+async function startStreamingAsr(modelId) {
+  const model = selectedModel();
+  if (!model?.available) {
+    setStatus(model?.reason || `${model?.label || "Model"} needs download`);
+    setControls("idle");
+    return;
+  }
   resetConversation();
   resetMeter();
   setControls("connecting");
   state.recording = false;
   state.finalizing = false;
-  setStatus(`Connecting ${provider}`);
+  setStatus(`Connecting ${model.label}`);
 
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -287,7 +446,9 @@ async function startStreamingAsr(provider) {
     },
   });
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-  const websocket = new WebSocket(`${protocol}://${window.location.host}/ws/asr/${provider}`);
+  const websocket = new WebSocket(
+    `${protocol}://${window.location.host}/ws/asr/${encodeURIComponent(modelId)}`,
+  );
   websocket.binaryType = "arraybuffer";
 
   websocket.onmessage = (event) => {
@@ -295,8 +456,8 @@ async function startStreamingAsr(provider) {
     if (message.type === "loading") {
       setStatus(message.message);
     } else if (message.type === "ready") {
-      const model = message.model ? ` (${message.model})` : "";
-      setStatus(`${provider} ready${model}`);
+      const loadedModel = message.model ? ` (${message.model})` : "";
+      setStatus(`Listening${loadedModel}`);
       state.recording = true;
       startMeter();
       setControls("recording");
@@ -316,11 +477,11 @@ async function startStreamingAsr(provider) {
     }
   };
   websocket.onerror = () => {
-    closeStreaming(`${provider} connection failed`);
+    closeStreaming(`${model.label} connection failed`);
   };
   websocket.onclose = () => {
     if (state.websocket === websocket) {
-      closeStreaming(state.finalizing ? "Transcription finished" : `${provider} connection closed`);
+      closeStreaming(state.finalizing ? "Transcription finished" : `${model.label} connection closed`);
     }
   };
 
@@ -350,7 +511,7 @@ async function startStreamingAsr(provider) {
 }
 
 async function start() {
-  await startStreamingAsr("whisper");
+  await startStreamingAsr(state.selectedModelId);
 }
 
 function stopAudioPipeline() {
@@ -401,6 +562,7 @@ function closeStreaming(statusText = "Stopped") {
   resetMeter();
   setControls("idle");
   setStatus(statusText);
+  renderModelOptions();
 }
 
 els.micBtn.addEventListener("click", () => {
@@ -421,6 +583,7 @@ els.searchBtn.addEventListener("click", () => {
 });
 els.transcript.addEventListener("input", () => transcriptChanged(false));
 
+loadAsrModels().catch((error) => setStatus(error.message));
 loadStatus().catch((error) => setStatus(error.message));
 initWaveform();
 renderResults([]);

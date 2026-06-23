@@ -10,6 +10,14 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from pdf_speech_search.asr_models import (
+    ASR_MODELS,
+    default_asr_model,
+    download_model,
+    get_asr_model,
+    model_installed,
+    model_status,
+)
 from pdf_speech_search.indexing import (
     PdfIndex,
     index_is_current,
@@ -17,7 +25,7 @@ from pdf_speech_search.indexing import (
     search_index,
 )
 from pdf_speech_search.settings import ROOT_DIR, settings
-from pdf_speech_search.stt import whisper_local
+from pdf_speech_search.stt import nemotron_local, whisper_local
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -39,6 +47,8 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 _index_lock = asyncio.Lock()
 _index: PdfIndex | None = None
+_download_lock = asyncio.Lock()
+_download_jobs: dict[str, dict[str, Any]] = {}
 
 
 async def get_index(force: bool = False) -> PdfIndex:
@@ -52,6 +62,37 @@ async def get_index(force: bool = False) -> PdfIndex:
                 force,
             )
         return _index
+
+
+def asr_model_payload() -> dict[str, Any]:
+    models: list[dict[str, Any]] = []
+    for spec in ASR_MODELS:
+        payload = model_status(spec)
+        job = _download_jobs.get(spec.id)
+        if job:
+            payload["download_status"] = job["status"]
+            payload["download_message"] = job.get("message")
+        else:
+            payload["download_status"] = "ready" if payload["available"] else "missing"
+            payload["download_message"] = None
+        models.append(payload)
+    return {
+        "default_model_id": default_asr_model().id,
+        "models": models,
+    }
+
+
+async def run_download_job(model_id: str) -> None:
+    spec = get_asr_model(model_id)
+    job = _download_jobs[model_id]
+    try:
+        job["message"] = f"Downloading {spec.label}"
+        await asyncio.to_thread(download_model, spec)
+        job["status"] = "ready"
+        job["message"] = f"{spec.label} is ready"
+    except Exception as exc:  # pragma: no cover - network/model runtime dependent
+        job["status"] = "error"
+        job["message"] = str(exc)
 
 
 @app.on_event("startup")
@@ -80,10 +121,39 @@ async def api_status() -> dict[str, Any]:
             "reranker_enabled": settings.enable_reranker,
             "reranker_model": settings.reranker_model if settings.enable_reranker else None,
         },
-        "asr": {
-            "whisper": whisper_local.status().__dict__,
-        },
+        "asr": asr_model_payload(),
     }
+
+
+@app.get("/api/asr/models")
+async def api_asr_models() -> dict[str, Any]:
+    return asr_model_payload()
+
+
+@app.post("/api/asr/models/{model_id}/download")
+async def download_asr_model(model_id: str) -> dict[str, Any]:
+    try:
+        spec = get_asr_model(model_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown ASR model") from None
+
+    if model_installed(spec):
+        _download_jobs[model_id] = {
+            "status": "ready",
+            "message": f"{spec.label} is ready",
+        }
+        return asr_model_payload()
+
+    async with _download_lock:
+        job = _download_jobs.get(model_id)
+        if job and job.get("status") == "downloading":
+            return asr_model_payload()
+        _download_jobs[model_id] = {
+            "status": "downloading",
+            "message": f"Downloading {spec.label}",
+        }
+        asyncio.create_task(run_download_job(model_id))
+    return asr_model_payload()
 
 
 @app.post("/api/index/rebuild", response_model=RebuildResponse)
@@ -125,11 +195,20 @@ async def pdf(doc_id: str) -> FileResponse:
     )
 
 
-@app.websocket("/ws/asr/whisper")
-async def ws_whisper(websocket: WebSocket) -> None:
+@app.websocket("/ws/asr/{model_id}")
+async def ws_asr(websocket: WebSocket, model_id: str) -> None:
     await websocket.accept()
     try:
-        await whisper_local.stream_websocket(websocket)
+        spec = get_asr_model(model_id)
+    except KeyError:
+        await websocket.send_json({"type": "error", "message": "Unknown ASR model"})
+        return
+
+    try:
+        if spec.engine == "whisper":
+            await whisper_local.stream_websocket(websocket, spec)
+        else:
+            await nemotron_local.stream_websocket(websocket, spec)
     except WebSocketDisconnect:
         return
 

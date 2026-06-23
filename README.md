@@ -1,161 +1,57 @@
 # PDF Speech Search
 
-Local app for English lecture captions and semantic slide-page retrieval over PDFs in `mlsc_slide/`.
+A local app that transcribes speech in real time and quickly finds the matching PDF slide page based on what you say.
 
-## Quick Start
+Put your PDFs in `mlsc_slide/`, start the app, speak into the microphone, and it will caption your speech and jump to the most relevant slide.
 
-One-command setup and launch:
+## Getting Started
+
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 ```bash
 ./run.sh
 ```
 
-Then open:
+Open in your browser: **http://127.0.0.1:8000**
 
-```text
-http://127.0.0.1:8000
-```
-
-If port 8000 is occupied:
-
-```bash
-PORT=8001 ./run.sh
-```
-
-What `run.sh` does:
-
-- creates or updates the `uv` Python 3.11 environment
-- downloads and warms local search and Whisper models
-- rebuilds the PDF semantic index from `mlsc_slide/`
-- starts the local server
-- opens the app in the browser on macOS
-
-Useful launch options:
-
-```bash
-# Start on a different port
-PORT=8001 ./run.sh
-
-# Do not open a browser automatically
-OPEN_BROWSER=0 ./run.sh
-
-# Skip rebuilding the PDF index
-SKIP_INDEX=1 ./run.sh
-
-# Faster, less accurate speech recognition
-WHISPER_MODEL=base.en ./run.sh
-
-# Slower, more accurate speech recognition
-WHISPER_MODEL=medium.en WHISPER_CHUNK_SECONDS=6 WHISPER_BEAM_SIZE=5 ./run.sh
-```
+The first run downloads models and builds the PDF index, which may take a few minutes. Later starts are much faster.
 
 Stop the app with `Ctrl+C` in the terminal running `./run.sh`.
 
-## Manual Setup
-
-Use this only if you do not want the one-command script:
+### Common Options
 
 ```bash
-uv sync --python 3.11
-uv run pdf-speech-download-models
-uv run pdf-speech-index --rebuild
-uv run pdf-speech-search
+PORT=8001 ./run.sh              # Use a different port
+OPEN_BROWSER=0 ./run.sh         # Do not open the browser automatically
+SKIP_INDEX=1 ./run.sh           # Skip rebuilding the PDF index
+ASR_MODEL_ID=whisper-base-en ./run.sh    # Pre-download a faster Whisper model
 ```
 
-Then open:
+## Supported Models
 
-```text
-http://127.0.0.1:8000
-```
+### Speech Recognition (ASR)
 
-The first setup downloads the local embedding model, reranker, and Whisper model.
+| Model | Notes |
+|-------|-------|
+| **Whisper Small** (default) | Balanced speed and accuracy |
+| Whisper Base | Faster, less accurate |
+| Whisper Medium | Slower, more accurate |
+| NVIDIA Nemotron | Local CPU, ~2.4 GB, download from the UI |
 
-To download and warm all models before opening the app:
+`./run.sh` pre-downloads **Whisper Small** by default. Other ASR models can be switched in the web UI; missing models show a download button.
 
-```bash
-uv run pdf-speech-download-models
-```
+### PDF Search
 
-To pre-download only Whisper:
+| Model | Purpose |
+|-------|---------|
+| `BAAI/bge-small-en-v1.5` | Semantic embeddings to find relevant slide pages |
+| `cross-encoder/ms-marco-MiniLM-L-6-v2` | Reranking to improve search accuracy |
 
-```bash
-uv run pdf-speech-download-models --skip-search
-```
+## Data Storage
 
-## Search
+Models and the index are stored in `.cache/` inside the project (not committed to git):
 
-Retrieval is now local semantic search, not keyword-first search.
+- `.cache/huggingface/` — speech and search models
+- `.cache/pdf_index.pkl` — PDF index
 
-The index is built per PDF page and stores:
-
-- dense embeddings from `BAAI/bge-small-en-v1.5`
-- lexical TF-IDF word and character n-gram scores as fallback
-- LSA scores over TF-IDF
-- page text and nearby-page context for slide decks
-
-At query time:
-
-1. The transcript window is expanded for common ML/RL terms and ASR variants.
-2. Dense semantic similarity retrieves candidate pages.
-3. `cross-encoder/ms-marco-MiniLM-L-6-v2` reranks candidate pages against the actual page text.
-4. The app opens the best PDF page with `#page=<number>`.
-
-This is meant to find the page explaining the spoken concept, not the first page where a word appears.
-
-## Local Whisper
-
-The default speech mode is `Local Whisper`. It does not use the browser Web Speech API.
-
-The browser only captures microphone audio and streams 16 kHz mono PCM to the local FastAPI server. Transcription runs locally with `faster-whisper`.
-
-`Stop` stops microphone capture only. The server keeps processing buffered audio, sends any remaining transcript, then marks transcription finished.
-
-Low-latency default:
-
-```text
-WHISPER_MODEL=small.en
-WHISPER_DEVICE=cpu
-WHISPER_COMPUTE_TYPE=int8
-WHISPER_CHUNK_SECONDS=3
-WHISPER_BEAM_SIZE=1
-```
-
-For even faster but less accurate captions:
-
-```bash
-export WHISPER_MODEL=base.en
-uv run pdf-speech-search
-```
-
-For higher accuracy but slower captions:
-
-```bash
-export WHISPER_MODEL=medium.en
-export WHISPER_CHUNK_SECONDS=6
-export WHISPER_BEAM_SIZE=5
-uv run pdf-speech-search
-```
-
-## Configuration
-
-Environment variables:
-
-```text
-PDF_DIR=mlsc_slide
-INDEX_PATH=.cache/pdf_index.pkl
-HOST=127.0.0.1
-PORT=8000
-AUTO_BUILD_INDEX=1
-
-SEMANTIC_MODEL=BAAI/bge-small-en-v1.5
-RERANKER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
-ENABLE_RERANKER=1
-RERANK_CANDIDATES=48
-MODEL_LOCAL_FILES_ONLY=1
-
-WHISPER_MODEL=small.en
-WHISPER_DEVICE=cpu
-WHISPER_COMPUTE_TYPE=int8
-WHISPER_CHUNK_SECONDS=3
-WHISPER_BEAM_SIZE=1
-```
+Keep real lecture slides in `mlsc_slide/` locally. The repo only includes `mock.pdf` as a demo.

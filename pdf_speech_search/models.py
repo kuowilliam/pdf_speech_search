@@ -7,14 +7,16 @@ import os
 def main() -> None:
     parser = argparse.ArgumentParser(description="Download and warm local ASR/search models.")
     parser.add_argument("--skip-search", action="store_true", help="Do not warm embedding/reranker models.")
-    parser.add_argument("--skip-whisper", action="store_true", help="Do not warm the Whisper model.")
+    parser.add_argument("--skip-asr", action="store_true", help="Do not warm the selected ASR model.")
+    parser.add_argument("--skip-whisper", action="store_true", help="Alias for --skip-asr.")
+    parser.add_argument("--asr-model", default=None, help="ASR model id to download and warm.")
     parser.add_argument("--whisper-model", default=None, help="Override WHISPER_MODEL for this run.")
     parser.add_argument("--semantic-model", default=None, help="Override SEMANTIC_MODEL for this run.")
     parser.add_argument("--reranker-model", default=None, help="Override RERANKER_MODEL for this run.")
     args = parser.parse_args()
 
-    if args.whisper_model:
-        os.environ["WHISPER_MODEL"] = args.whisper_model
+    if args.asr_model:
+        os.environ["ASR_MODEL_ID"] = args.asr_model
     if args.semantic_model:
         os.environ["SEMANTIC_MODEL"] = args.semantic_model
     if args.reranker_model:
@@ -32,18 +34,15 @@ def main() -> None:
             print(f"Loading reranker model: {settings.reranker_model}")
             get_reranker_model(settings.reranker_model)
 
-    if not args.skip_whisper:
-        from faster_whisper import WhisperModel
+    if not args.skip_asr and not args.skip_whisper:
+        from pdf_speech_search.asr_models import download_model, get_asr_model
 
-        print(
-            "Loading Whisper model: "
-            f"{settings.whisper_model} ({settings.whisper_device}, {settings.whisper_compute_type})"
-        )
-        WhisperModel(
-            settings.whisper_model,
-            device=settings.whisper_device,
-            compute_type=settings.whisper_compute_type,
-        )
+        if args.whisper_model and not args.asr_model:
+            model_id = f"whisper-{args.whisper_model.replace('.', '-')}"
+            os.environ["ASR_MODEL_ID"] = model_id
+        spec = get_asr_model(os.getenv("ASR_MODEL_ID", settings.asr_model_id))
+        print(f"Loading ASR model: {spec.label} ({spec.model_name})")
+        download_model(spec)
 
     print("Models are downloaded and loadable.")
 

@@ -6,6 +6,13 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+DEFAULT_MODEL_CACHE_DIR = ROOT_DIR / ".cache" / "huggingface"
+DEFAULT_XDG_CACHE_DIR = ROOT_DIR / ".cache" / "xdg"
+DEFAULT_MPL_CACHE_DIR = ROOT_DIR / ".cache" / "matplotlib"
+
+os.environ.setdefault("HF_HOME", str(DEFAULT_MODEL_CACHE_DIR))
+os.environ.setdefault("XDG_CACHE_HOME", str(DEFAULT_XDG_CACHE_DIR))
+os.environ.setdefault("MPLCONFIGDIR", str(DEFAULT_MPL_CACHE_DIR))
 
 
 def bool_env(name: str, default: bool) -> bool:
@@ -28,6 +35,7 @@ class Settings:
     root_dir: Path = ROOT_DIR
     pdf_dir: Path = path_env("PDF_DIR", ROOT_DIR / "mlsc_slide")
     index_path: Path = path_env("INDEX_PATH", ROOT_DIR / ".cache" / "pdf_index.pkl")
+    model_cache_dir: Path = path_env("MODEL_CACHE_DIR", DEFAULT_MODEL_CACHE_DIR)
     host: str = os.getenv("HOST", "127.0.0.1")
     port: int = int(os.getenv("PORT", "8000"))
     auto_build_index: bool = bool_env("AUTO_BUILD_INDEX", True)
@@ -44,6 +52,7 @@ class Settings:
     rerank_batch_size: int = int(os.getenv("RERANK_BATCH_SIZE", "16"))
     model_local_files_only: bool = bool_env("MODEL_LOCAL_FILES_ONLY", True)
 
+    asr_model_id: str = os.getenv("ASR_MODEL_ID", "whisper-small-en")
     whisper_model: str = os.getenv("WHISPER_MODEL", "small.en")
     whisper_device: str = os.getenv("WHISPER_DEVICE", "cpu")
     whisper_compute_type: str = os.getenv("WHISPER_COMPUTE_TYPE", "int8")

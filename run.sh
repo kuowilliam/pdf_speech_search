@@ -8,12 +8,17 @@ HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-8000}"
 URL="http://${HOST}:${PORT}"
 
+export ASR_MODEL_ID="${ASR_MODEL_ID:-whisper-small-en}"
 export WHISPER_MODEL="${WHISPER_MODEL:-small.en}"
 export WHISPER_DEVICE="${WHISPER_DEVICE:-cpu}"
 export WHISPER_COMPUTE_TYPE="${WHISPER_COMPUTE_TYPE:-int8}"
 export WHISPER_CHUNK_SECONDS="${WHISPER_CHUNK_SECONDS:-3}"
 export WHISPER_BEAM_SIZE="${WHISPER_BEAM_SIZE:-1}"
 export MODEL_LOCAL_FILES_ONLY="${MODEL_LOCAL_FILES_ONLY:-1}"
+export UV_CACHE_DIR="${UV_CACHE_DIR:-$ROOT_DIR/.uv-cache}"
+export HF_HOME="${HF_HOME:-$ROOT_DIR/.cache/huggingface}"
+export XDG_CACHE_HOME="${XDG_CACHE_HOME:-$ROOT_DIR/.cache/xdg}"
+export MPLCONFIGDIR="${MPLCONFIGDIR:-$ROOT_DIR/.cache/matplotlib}"
 
 if ! command -v uv >/dev/null 2>&1; then
   echo "uv is required but was not found."
@@ -22,10 +27,10 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 echo "==> Syncing Python environment"
-uv sync --python 3.11
+uv sync --python 3.11 --inexact
 
-echo "==> Downloading and warming local models"
-MODEL_LOCAL_FILES_ONLY=0 uv run pdf-speech-download-models
+echo "==> Downloading and warming local models for ${ASR_MODEL_ID}"
+MODEL_LOCAL_FILES_ONLY=0 uv run pdf-speech-download-models --asr-model "$ASR_MODEL_ID"
 
 if [[ "${SKIP_INDEX:-0}" != "1" ]]; then
   echo "==> Building PDF semantic index"
@@ -77,4 +82,3 @@ done
 
 echo "Timed out waiting for ${URL}"
 exit 1
-

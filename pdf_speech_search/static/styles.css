@@ -116,7 +116,7 @@ h2 {
 
 .leftPane {
   display: grid;
-  grid-template-rows: 350px minmax(0, 1fr);
+  grid-template-rows: 390px minmax(0, 1fr);
   gap: 16px;
 }
 
@@ -140,6 +140,110 @@ h2 {
 .panelHead {
   justify-content: space-between;
   min-height: 32px;
+}
+
+.modelOptions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  margin-top: 8px;
+}
+
+.modelOption {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffefb;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.modelOption.selected {
+  border-color: var(--accent);
+  background: var(--soft);
+}
+
+.modelOption.disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.modelDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 99px;
+  background: #a9a49a;
+  box-shadow: 0 0 0 2px rgba(169, 164, 154, 0.18);
+}
+
+.modelDot.ready {
+  background: #1f9d58;
+  box-shadow: 0 0 0 2px rgba(31, 157, 88, 0.18);
+}
+
+.modelDot.downloading {
+  background: #d28b1f;
+  box-shadow: 0 0 0 2px rgba(210, 139, 31, 0.2);
+}
+
+.modelDot.error {
+  background: #bd3d2a;
+  box-shadow: 0 0 0 2px rgba(189, 61, 42, 0.18);
+}
+
+.modelText {
+  display: grid;
+  min-width: 0;
+}
+
+.modelLabel,
+.modelDetail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modelLabel {
+  font-size: 12px;
+  font-weight: 730;
+}
+
+.modelDetail {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.modelDownload {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 27px;
+  min-width: 27px;
+  height: 27px;
+  min-height: 27px;
+  padding: 0;
+  border-radius: 999px;
+  background: #f4efe4;
+}
+
+.modelDownload:hover {
+  background: #fff8ea;
+}
+
+.modelDownload svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
 }
 
 .toggle {
@@ -401,7 +505,7 @@ h2 {
   }
 
   .leftPane {
-    grid-template-rows: 330px 420px;
+    grid-template-rows: 390px 420px;
   }
 
   .viewerPane {
