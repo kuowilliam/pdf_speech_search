@@ -7,7 +7,7 @@ import threading
 import wave
 from typing import Any
 
-from fastapi import WebSocket
+from fastapi import WebSocket, WebSocketDisconnect
 
 from pdf_speech_search.asr_models import AsrModelSpec, find_cached_nemo
 
@@ -83,14 +83,23 @@ def transcribe_chunk(raw_audio: bytes, spec: AsrModelSpec) -> str:
 
 
 async def stream_websocket(websocket: WebSocket, spec: AsrModelSpec) -> None:
-    await websocket.send_json({"type": "loading", "message": f"Loading {spec.label}"})
+    async def send_json_safe(message: dict[str, Any]) -> bool:
+        try:
+            await websocket.send_json(message)
+            return True
+        except (RuntimeError, WebSocketDisconnect):
+            stop_event.set()
+            return False
+
+    stop_event = asyncio.Event()
+    await send_json_safe({"type": "loading", "message": f"Loading {spec.label}"})
     try:
         await asyncio.to_thread(get_model, spec)
     except Exception as exc:  # pragma: no cover - model/runtime dependent
-        await websocket.send_json({"type": "error", "message": f"Nemotron model load failed: {exc}"})
+        await send_json_safe({"type": "error", "message": f"Nemotron model load failed: {exc}"})
         return
 
-    await websocket.send_json(
+    ready_sent = await send_json_safe(
         {
             "type": "ready",
             "sample_rate": SAMPLE_RATE,
@@ -98,16 +107,20 @@ async def stream_websocket(websocket: WebSocket, spec: AsrModelSpec) -> None:
             "chunk_seconds": spec.chunk_seconds,
         }
     )
+    if not ready_sent:
+        return
 
     audio_queue: asyncio.Queue[bytes | None] = asyncio.Queue(maxsize=250)
-    stop_event = asyncio.Event()
     chunk_bytes = int(spec.chunk_seconds * SAMPLE_RATE * BYTES_PER_SAMPLE)
     min_flush_bytes = int(1.0 * SAMPLE_RATE * BYTES_PER_SAMPLE)
 
     async def receive_audio() -> None:
         try:
             while not stop_event.is_set():
-                message = await websocket.receive()
+                try:
+                    message = await websocket.receive()
+                except (RuntimeError, WebSocketDisconnect):
+                    break
                 if "bytes" in message and message["bytes"] is not None:
                     try:
                         audio_queue.put_nowait(message["bytes"])
@@ -135,11 +148,13 @@ async def stream_websocket(websocket: WebSocket, spec: AsrModelSpec) -> None:
             try:
                 text = await asyncio.to_thread(transcribe_chunk, raw, spec)
             except Exception as exc:  # pragma: no cover - model/runtime dependent
-                await websocket.send_json({"type": "error", "message": f"Nemotron failed: {exc}"})
+                await send_json_safe({"type": "error", "message": f"Nemotron failed: {exc}"})
                 stop_event.set()
                 return
             if text:
-                await websocket.send_json({"type": "transcript", "text": text, "final": True})
+                sent = await send_json_safe({"type": "transcript", "text": text, "final": True})
+                if not sent:
+                    return
 
         while not stop_event.is_set() or not audio_queue.empty():
             chunk = await audio_queue.get()
@@ -149,7 +164,7 @@ async def stream_websocket(websocket: WebSocket, spec: AsrModelSpec) -> None:
             await flush(force=False)
 
         await flush(force=True)
-        await websocket.send_json({"type": "done"})
+        await send_json_safe({"type": "done"})
 
     receive_task = asyncio.create_task(receive_audio())
     process_task = asyncio.create_task(process_audio())

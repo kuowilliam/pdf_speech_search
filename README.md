@@ -14,7 +14,7 @@ Requires [uv](https://docs.astral.sh/uv/getting-started/installation/).
 
 Open in your browser: **http://127.0.0.1:8000**
 
-The first run downloads models and builds the PDF index, which may take a few minutes. Later starts are much faster.
+The first run downloads the NVIDIA Nemotron ASR checkpoint and builds the PDF index, which may take a few minutes. Later starts reuse the local cache.
 
 Stop the app with `Ctrl+C` in the terminal running `./run.sh`.
 
@@ -24,7 +24,7 @@ Stop the app with `Ctrl+C` in the terminal running `./run.sh`.
 PORT=8001 ./run.sh              # Use a different port
 OPEN_BROWSER=0 ./run.sh         # Do not open the browser automatically
 SKIP_INDEX=1 ./run.sh           # Skip rebuilding the PDF index
-ASR_MODEL_ID=whisper-base-en ./run.sh    # Pre-download a faster Whisper model
+FORCE_INDEX=1 ./run.sh          # Force rebuild even if PDFs did not change
 ```
 
 ## Supported Models
@@ -33,12 +33,11 @@ ASR_MODEL_ID=whisper-base-en ./run.sh    # Pre-download a faster Whisper model
 
 | Model | Notes |
 |-------|-------|
-| **Whisper Small** (default) | Balanced speed and accuracy |
-| Whisper Base | Faster, less accurate |
-| Whisper Medium | Slower, more accurate |
-| NVIDIA Nemotron | Local CPU, ~2.4 GB, download from the UI |
+| **NVIDIA Nemotron** | Local CPU ASR, ~2.4 GB `.nemo` checkpoint |
 
-`./run.sh` pre-downloads **Whisper Small** by default. Other ASR models can be switched in the web UI; missing models show a download button.
+`./run.sh` uses `ASR_MODEL_ID=nemotron-0-6b` by default. If the checkpoint already exists in `.cache/huggingface/`, startup skips the download.
+
+Press the microphone button to start capture. Press it again to stop microphone capture; transcription continues on the already-buffered audio and finishes when the server sends the final text.
 
 ### PDF Search
 

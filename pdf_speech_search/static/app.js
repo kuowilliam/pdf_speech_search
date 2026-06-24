@@ -382,12 +382,17 @@ function renderResults(results) {
 }
 
 function openResult(result) {
-  const url = `/pdf/${result.doc_id}#page=${result.page}`;
+  const page = encodeURIComponent(String(result.page));
+  const docId = encodeURIComponent(result.doc_id);
+  const url = `/pdf/${docId}/page/${page}?nav=${Date.now()}#page=${page}`;
   state.activeKey = `${result.doc_id}:${result.page}`;
   els.viewerTitle.textContent = result.pdf_name;
   els.viewerPage.textContent = `Page ${result.page}`;
   els.openTab.href = url;
-  els.pdfViewer.src = url;
+  els.pdfViewer.src = "about:blank";
+  window.setTimeout(() => {
+    els.pdfViewer.src = url;
+  }, 30);
   renderResults(state.results);
 }
 

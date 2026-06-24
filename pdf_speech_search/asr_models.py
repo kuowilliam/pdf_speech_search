@@ -8,7 +8,7 @@ from typing import Literal
 from pdf_speech_search.settings import settings
 
 
-Engine = Literal["whisper", "nemotron"]
+Engine = Literal["nemotron"]
 
 
 @dataclass(frozen=True)
@@ -26,45 +26,15 @@ class AsrModelSpec:
 
 ASR_MODELS: tuple[AsrModelSpec, ...] = (
     AsrModelSpec(
-        id="whisper-base-en",
-        label="Whisper Base",
-        detail="Faster",
-        engine="whisper",
-        model_name="base.en",
-        repo_id="Systran/faster-whisper-base.en",
-        chunk_seconds=3.0,
-        beam_size=1,
-    ),
-    AsrModelSpec(
-        id="whisper-small-en",
-        label="Whisper Small",
-        detail="Default",
-        engine="whisper",
-        model_name="small.en",
-        repo_id="Systran/faster-whisper-small.en",
-        chunk_seconds=3.0,
-        beam_size=1,
-        default=True,
-    ),
-    AsrModelSpec(
-        id="whisper-medium-en",
-        label="Whisper Medium",
-        detail="More accurate",
-        engine="whisper",
-        model_name="medium.en",
-        repo_id="Systran/faster-whisper-medium.en",
-        chunk_seconds=6.0,
-        beam_size=5,
-    ),
-    AsrModelSpec(
         id="nemotron-0-6b",
         label="NVIDIA Nemotron",
-        detail="Local CPU",
+        detail="Local CPU ASR",
         engine="nemotron",
         model_name="nvidia/nemotron-speech-streaming-en-0.6b",
         repo_id="nvidia/nemotron-speech-streaming-en-0.6b",
         chunk_seconds=5.0,
         beam_size=1,
+        default=True,
     ),
 )
 
@@ -72,7 +42,6 @@ ASR_MODELS: tuple[AsrModelSpec, ...] = (
 def get_asr_model(model_id: str | None) -> AsrModelSpec:
     normalized = model_id or settings.asr_model_id
     aliases = {
-        "whisper": "whisper-small-en",
         "nemotron": "nemotron-0-6b",
     }
     normalized = aliases.get(normalized, normalized)
@@ -145,7 +114,7 @@ def find_cached_nemo(model_name: str) -> Path | None:
 
 
 def runtime_available(spec: AsrModelSpec) -> tuple[bool, str | None]:
-    modules = ["faster_whisper"] if spec.engine == "whisper" else ["nemo", "soundfile", "torch"]
+    modules = ["nemo", "soundfile", "torch", "huggingface_hub"]
     missing = [module for module in modules if find_spec(module) is None]
     if missing:
         return False, f"Missing Python package: {', '.join(missing)}"
@@ -153,20 +122,11 @@ def runtime_available(spec: AsrModelSpec) -> tuple[bool, str | None]:
 
 
 def model_installed(spec: AsrModelSpec) -> bool:
-    if spec.engine == "nemotron":
-        return find_cached_nemo(spec.model_name) is not None
-    return hf_repo_cached(spec.repo_id)
+    return find_cached_nemo(spec.model_name) is not None
 
 
 def download_model(spec: AsrModelSpec) -> None:
-    if spec.engine == "whisper":
-        from faster_whisper import WhisperModel
-
-        WhisperModel(
-            spec.model_name,
-            device=settings.whisper_device,
-            compute_type=settings.whisper_compute_type,
-        )
+    if model_installed(spec):
         return
 
     from huggingface_hub import hf_hub_download

@@ -6,9 +6,17 @@ from pathlib import Path
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-DEFAULT_MODEL_CACHE_DIR = ROOT_DIR / ".cache" / "huggingface"
 DEFAULT_XDG_CACHE_DIR = ROOT_DIR / ".cache" / "xdg"
 DEFAULT_MPL_CACHE_DIR = ROOT_DIR / ".cache" / "matplotlib"
+
+_model_cache_raw = os.getenv("MODEL_CACHE_DIR")
+if _model_cache_raw:
+    DEFAULT_MODEL_CACHE_DIR = Path(_model_cache_raw).expanduser()
+    if not DEFAULT_MODEL_CACHE_DIR.is_absolute():
+        DEFAULT_MODEL_CACHE_DIR = ROOT_DIR / DEFAULT_MODEL_CACHE_DIR
+    DEFAULT_MODEL_CACHE_DIR = DEFAULT_MODEL_CACHE_DIR.resolve()
+else:
+    DEFAULT_MODEL_CACHE_DIR = ROOT_DIR / ".cache" / "huggingface"
 
 os.environ.setdefault("HF_HOME", str(DEFAULT_MODEL_CACHE_DIR))
 os.environ.setdefault("XDG_CACHE_HOME", str(DEFAULT_XDG_CACHE_DIR))
@@ -52,17 +60,7 @@ class Settings:
     rerank_batch_size: int = int(os.getenv("RERANK_BATCH_SIZE", "16"))
     model_local_files_only: bool = bool_env("MODEL_LOCAL_FILES_ONLY", True)
 
-    asr_model_id: str = os.getenv("ASR_MODEL_ID", "whisper-small-en")
-    whisper_model: str = os.getenv("WHISPER_MODEL", "small.en")
-    whisper_device: str = os.getenv("WHISPER_DEVICE", "cpu")
-    whisper_compute_type: str = os.getenv("WHISPER_COMPUTE_TYPE", "int8")
-    whisper_chunk_seconds: float = float(os.getenv("WHISPER_CHUNK_SECONDS", "3"))
-    whisper_beam_size: int = int(os.getenv("WHISPER_BEAM_SIZE", "1"))
-    whisper_language: str = os.getenv("WHISPER_LANGUAGE", "en")
-    whisper_initial_prompt: str = os.getenv(
-        "WHISPER_INITIAL_PROMPT",
-        "Machine learning lecture about neural networks, backpropagation, reinforcement learning, DQN, Q-learning, target networks, and experience replay.",
-    )
+    asr_model_id: str = os.getenv("ASR_MODEL_ID", "nemotron-0-6b")
 
 
 settings = Settings()

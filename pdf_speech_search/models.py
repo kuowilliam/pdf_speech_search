@@ -5,12 +5,10 @@ import os
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Download and warm local ASR/search models.")
+    parser = argparse.ArgumentParser(description="Download local ASR/search models.")
     parser.add_argument("--skip-search", action="store_true", help="Do not warm embedding/reranker models.")
     parser.add_argument("--skip-asr", action="store_true", help="Do not warm the selected ASR model.")
-    parser.add_argument("--skip-whisper", action="store_true", help="Alias for --skip-asr.")
     parser.add_argument("--asr-model", default=None, help="ASR model id to download and warm.")
-    parser.add_argument("--whisper-model", default=None, help="Override WHISPER_MODEL for this run.")
     parser.add_argument("--semantic-model", default=None, help="Override SEMANTIC_MODEL for this run.")
     parser.add_argument("--reranker-model", default=None, help="Override RERANKER_MODEL for this run.")
     args = parser.parse_args()
@@ -34,17 +32,17 @@ def main() -> None:
             print(f"Loading reranker model: {settings.reranker_model}")
             get_reranker_model(settings.reranker_model)
 
-    if not args.skip_asr and not args.skip_whisper:
-        from pdf_speech_search.asr_models import download_model, get_asr_model
+    if not args.skip_asr:
+        from pdf_speech_search.asr_models import download_model, get_asr_model, model_installed
 
-        if args.whisper_model and not args.asr_model:
-            model_id = f"whisper-{args.whisper_model.replace('.', '-')}"
-            os.environ["ASR_MODEL_ID"] = model_id
         spec = get_asr_model(os.getenv("ASR_MODEL_ID", settings.asr_model_id))
-        print(f"Loading ASR model: {spec.label} ({spec.model_name})")
-        download_model(spec)
+        if model_installed(spec):
+            print(f"ASR model already downloaded: {spec.label} ({spec.model_name})")
+        else:
+            print(f"Downloading ASR model: {spec.label} ({spec.model_name})")
+            download_model(spec)
 
-    print("Models are downloaded and loadable.")
+    print("Required model files are present.")
 
 
 if __name__ == "__main__":

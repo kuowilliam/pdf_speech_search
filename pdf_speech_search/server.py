@@ -25,7 +25,7 @@ from pdf_speech_search.indexing import (
     search_index,
 )
 from pdf_speech_search.settings import ROOT_DIR, settings
-from pdf_speech_search.stt import nemotron_local, whisper_local
+from pdf_speech_search.stt import nemotron_local
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -178,8 +178,7 @@ async def search_get(q: str, top_k: int = 5) -> dict[str, Any]:
     return await search(SearchRequest(query=q, top_k=top_k))
 
 
-@app.get("/pdf/{doc_id}")
-async def pdf(doc_id: str) -> FileResponse:
+async def pdf_file_response(doc_id: str) -> FileResponse:
     index = await get_index(force=False)
     path_str = index.doc_map.get(doc_id)
     if path_str is None:
@@ -195,6 +194,16 @@ async def pdf(doc_id: str) -> FileResponse:
     )
 
 
+@app.get("/pdf/{doc_id}/page/{page}")
+async def pdf_page(doc_id: str, page: int) -> FileResponse:
+    return await pdf_file_response(doc_id)
+
+
+@app.get("/pdf/{doc_id}")
+async def pdf(doc_id: str) -> FileResponse:
+    return await pdf_file_response(doc_id)
+
+
 @app.websocket("/ws/asr/{model_id}")
 async def ws_asr(websocket: WebSocket, model_id: str) -> None:
     await websocket.accept()
@@ -205,10 +214,7 @@ async def ws_asr(websocket: WebSocket, model_id: str) -> None:
         return
 
     try:
-        if spec.engine == "whisper":
-            await whisper_local.stream_websocket(websocket, spec)
-        else:
-            await nemotron_local.stream_websocket(websocket, spec)
+        await nemotron_local.stream_websocket(websocket, spec)
     except WebSocketDisconnect:
         return
 

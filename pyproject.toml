@@ -5,15 +5,20 @@ description = "Local live speech captions and semantic PDF slide retrieval."
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
+  "cython>=3.0.0",
   "fastapi>=0.115.0",
-  "faster-whisper>=1.1.0",
+  "huggingface-hub>=0.34.0,<1.0",
+  "nemo-toolkit[asr]>=2.7.0",
   "numpy>=2.0.0",
+  "packaging>=24.0",
   "pydantic>=2.8.0",
   "pypdf>=5.0.0",
   "python-multipart>=0.0.12",
   "scikit-learn>=1.5.0",
   "sentence-transformers>=3.0.0",
+  "soundfile>=0.13.0",
   "torch>=2.4.0",
+  "torchaudio>=2.4.0",
   "uvicorn[standard]>=0.30.0",
 ]
 

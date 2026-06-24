@@ -440,9 +440,24 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, default=5, help="Number of test results.")
     args = parser.parse_args()
 
-    index = load_or_build_index(Path(args.pdf_dir), Path(args.index_path), force=args.rebuild)
+    pdf_dir = Path(args.pdf_dir)
+    index_path = Path(args.index_path)
+    action = "Using current"
+    if args.rebuild:
+        index = build_index(pdf_dir, index_path)
+        action = "Rebuilt"
+    else:
+        try:
+            index = load_index(index_path)
+            if not index_is_current(index, pdf_dir):
+                index = build_index(pdf_dir, index_path)
+                action = "Built"
+        except Exception:
+            index = build_index(pdf_dir, index_path)
+            action = "Built"
+
     print(
-        f"Indexed {len(index.pages)} pages from {len(index.doc_map)} PDFs -> {Path(args.index_path).resolve()}"
+        f"{action} index: {len(index.pages)} pages from {len(index.doc_map)} PDFs -> {index_path.resolve()}"
     )
     if args.query:
         for result in search_index(index, args.query, args.top_k):
